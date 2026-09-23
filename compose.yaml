@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: maestro
+      POSTGRES_DB: maestro
+      POSTGRES_PASSWORD: ${MAESTRO_DB_PASSWORD:?Generate a database password}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maestro -d maestro"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  maestro-api:
+    build: ./backend
+    environment:
+      MAESTRO_LISTEN: :8080
+      MAESTRO_API_TOKEN: ${MAESTRO_API_TOKEN:?Generate a long random API token}
+      MAESTRO_DATABASE_URL: postgres://maestro:${MAESTRO_DB_PASSWORD}@db:5432/maestro?sslmode=disable
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      AZURE_SUBSCRIPTION_ID: ${AZURE_SUBSCRIPTION_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+  dashboard:
+    build: ./frontend
+    ports: ["127.0.0.1:8088:8080"]
+    depends_on: [maestro-api]
+    read_only: true
+    tmpfs: [/tmp, /var/cache/nginx, /var/run]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+volumes:
+  db-data:

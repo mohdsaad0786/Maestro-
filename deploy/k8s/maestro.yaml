@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: maestro-api
+  annotations: {}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maestro-api
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: maestro-api}
+  template:
+    metadata:
+      labels: {app: maestro-api}
+    spec:
+      serviceAccountName: maestro-api
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: api
+          image: REPLACE_WITH_BACKEND_IMAGE
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - name: MAESTRO_LISTEN
+              value: ":8080"
+            - name: MAESTRO_API_TOKEN
+              valueFrom: {secretKeyRef: {name: maestro, key: api-token}}
+            - name: MAESTRO_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: maestro, key: database-url}}
+            - name: GOOGLE_CLOUD_PROJECT
+              value: ""
+            - name: AZURE_SUBSCRIPTION_ID
+              value: ""
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "2", memory: 1Gi}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maestro-api
+spec:
+  selector: {app: maestro-api}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maestro-dashboard
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: maestro-dashboard}
+  template:
+    metadata:
+      labels: {app: maestro-dashboard}
+    spec:
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: dashboard
+          image: REPLACE_WITH_FRONTEND_IMAGE
+          ports: [{name: http, containerPort: 8080}]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          readinessProbe: {httpGet: {path: /, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /, port: http}, periodSeconds: 10}
+          volumeMounts:
+            - {name: nginx-cache, mountPath: /var/cache/nginx}
+            - {name: nginx-run, mountPath: /var/run}
+            - {name: tmp, mountPath: /tmp}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      volumes:
+        - {name: nginx-cache, emptyDir: {}}
+        - {name: nginx-run, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maestro-dashboard
+spec:
+  selector: {app: maestro-dashboard}
+  ports: [{name: http, port: 8080, targetPort: http}]

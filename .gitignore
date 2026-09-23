@@ -1,0 +1,6 @@
+backend/maestro.db*
+frontend/node_modules/
+frontend/dist/
+*.test
+.env
+.DS_Store
